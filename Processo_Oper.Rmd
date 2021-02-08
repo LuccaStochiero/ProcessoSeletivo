@@ -1,0 +1,178 @@
+---
+title: "Dashboard Oper"
+output: 
+  flexdashboard::flex_dashboard:
+      vertical_layout: scroll
+---
+
+```{r include = FALSE}
+library(flexdashboard)
+library(dplyr)
+library(ggplot2)
+library(data.table)
+
+BRA <- read.csv("/cloud/project/BRA (1).csv")
+ENG <- read.csv("/cloud/project/E0 (2).csv")
+FRA <- read.csv("/cloud/project/F1.csv")
+
+BRA = subset(BRA, Season == 2019)
+BRA = rename(BRA, Div = League, FTHG = HG, FTAG = AG, HomeTeam = Home, AwayTeam = Away, FTR = Res)
+comum1 = names(BRA) %in% names(FRA)
+comum = names(BRA)[comum1]
+comum2 = names(ENG) %in% comum
+comum = names(ENG)[comum2]
+FRA = select(FRA, matches(comum), -contains("AH"))
+ENG = select(ENG, matches(comum), -contains("AH"))
+BRA = select(BRA, -Season, -Country, -contains("P"))
+data = rbind(ENG, BRA, FRA)
+
+#Acertos Aposta
+
+data$Res = ifelse(data$FTHG > data$FTAG, "H", "0")
+data$Res = ifelse(data$FTHG < data$FTAG, "A", data$Res)
+data$Res = ifelse(data$FTHG == data$FTAG, "D", data$Res)
+
+aposta = 0
+
+for (i in 1:dim(data)[1]){
+  if(data$Res[i] == "H") {
+    if (data$AvgH[i]>data$AvgD[i] & data$AvgH[i]>data$AvgA[i]){
+      aposta[i] = "Maior aposta"
+    }else if(data$AvgH[i]<data$AvgD[i] & data$AvgH[i]<data$AvgA[i]){
+      aposta[i] = "Menor aposta"
+    }else {
+      aposta[i] = "Aposta Média"
+      }
+  }else if(data$Res[i] == "D") {
+    if (data$AvgD[i]>data$AvgH[i] & data$AvgD[i]>data$AvgA[i]){
+      aposta[i] = "Maior aposta"
+    }else if(data$AvgH[i]>data$AvgD[i] & data$AvgD[i]<data$AvgA[i]){
+      aposta[i] = "Menor aposta"
+    }else {
+      aposta[i] = "Aposta Média"
+    }
+  }else {
+    if (data$AvgA[i]>data$AvgD[i] & data$AvgH[i]<data$AvgA[i]){
+      aposta[i] = "Maior aposta"
+    }else if(data$AvgA[i]<data$AvgD[i] & data$AvgH[i]>data$AvgA[i]){
+      aposta[i] = "Menor aposta"
+    }else {
+      aposta[i] = "Aposta Média"
+    }
+  }
+}
+
+data$aposta = aposta
+
+Q1 =as.data.frame(table(data$aposta, data$Div))
+
+#Pontuação média H e A por liga
+
+
+PHPL = 0
+PHL1 = 0
+PHBR = 0
+PAPL = 0
+PAL1 = 0
+PABR = 0
+
+for (i in 1:dim(data)[1]) {
+  if(data$Res[i] == "H") {
+    if (data$Div[i] == "E0"){
+      PHPL = PHPL + 3
+    }
+    if (data$Div[i] == "F1"){
+      PHL1 = PHL1 + 3
+    }
+    if (data$Div[i] == "Serie A"){
+      PHBR = PHBR + 3
+    }
+  }
+  if(data$Res[i] == "D") {
+    if (data$Div[i] == "E0"){
+      PHPL = PHPL + 1
+      PAPL = PAPL + 1
+    }
+    if (data$Div[i] == "F1"){
+      PHL1 = PHL1 + 1
+      PAL1 = PAL1 + 1
+    }
+    if (data$Div[i] == "Serie A"){
+      PHBR = PHBR + 1
+      PABR = PABR + 1
+    }
+  }
+  if(data$Res[i] == "A") {
+    if (data$Div[i] == "E0"){
+      PAPL = PAPL + 3
+    }
+    if (data$Div[i] == "F1"){
+      PAL1 = PAL1 + 3
+    }
+    if (data$Div[i] == "Serie A"){
+      PABR = PABR + 3
+    }
+  }
+}
+
+PHPL = PHPL/380
+PHL1 = PHL1/279
+PHBR = PHBR/380
+PAPL = PAPL/380
+PAL1 = PAL1/279
+PABR = PABR/380
+
+pontMed = data.table(A1 = c("Premier League","Premier League","Ligue 1","Ligue 1","Brasileirão","Brasileirão"), 
+                        A2 = c(PHPL, PAPL, PHL1, PAL1, PHBR, PABR), 
+                        A3 = c("Mandante","Visitante","Mandante","Visitante","Mandante","Visitante"))
+
+
+data$nGols = data$FTHG + data$FTAG
+
+f = table(data$nGols, data$Div)
+ff = as.data.frame(f)
+
+```
+
+# Intro {.sidebar}
+
+Trataremos nesse dashboard temas comparando a temporada 2019 (ou 19/20 para ligas européias)
+
+* Pontuação média por rodada de acordo com o local
+* Frequência do número de gols por jogo
+* Frequência dos acertos do resultado dos jogos nas casas de aposta
+
+# Comparação
+
+## Column 1
+
+### Pontuação
+
+```{r echo = FALSE}
+ggplot(pontMed, aes(A3, A2, fill = A1)) + 
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_brewer(palette = "Set1", name = "Ligas", labels = c("Premier League", "Ligue 1", "Brasileirão")) + 
+  xlab("Condição") + ylab("Pontuação média") +  ggtitle("Pontuação média por partida de acordo com a condição do time")
+```
+
+
+### Número de gols por jogo
+
+```{r echo = FALSE}
+ggplot(ff, aes(Freq, factor(Var1), fill = Var2)) + 
+  geom_bar(stat = "identity", position = "dodge") + coord_flip() +
+  scale_fill_brewer(palette = "Set1", name = "Ligas", labels = c("Premier League", "Ligue 1", "Brasileirão")) + 
+  xlab("Frequência") + ylab("Nº de gols") +  ggtitle("Comparação do número de gols por partida entre ligas")
+
+```
+
+
+### Apostas certas
+
+```{r echo = FALSE}
+ggplot(Q1, aes(Var1, Freq, fill = Var2)) + 
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_brewer(palette = "Set1", name = "Ligas", labels = c("Premier League", "Ligue 1", "Brasileirão")) + 
+  xlab("Aposta vencedora") + ylab("Frequencia") +  ggtitle("Frequencia de apostas certas por liga")
+
+```
